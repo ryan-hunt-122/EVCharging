@@ -3,26 +3,33 @@ from gym import spaces
 import numpy as np
 from numpy import random
 from PIL import Image
+from reference import get_state_reference
+import random
 
 class EVCharging(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, shape):
+    def __init__(self, timesteps, n_vehicles, shape=(30, 30)):
         super(EVCharging, self).__init__()
         # Define action and observation space
         # They must be gym.spaces objects
         self.h, self.w = shape[0], shape[1]
-        self.timesteps = 300
-        self.box_size = 10
+        self.timesteps = timesteps
+        self.N_VEHICLES = n_vehicles
+
+        self.box_size = (300 // self.h)
+
         self.N_BOXES = int(((self.timesteps / self.box_size) ** 2) / 2 + (self.timesteps / self.box_size) / 2)
-        self.N_VEHICLES = 100
-        self.vehicles = self.gen_vehicles()
-        self.signal = 0.0
+
+        self.init_vehicles, self.reference_signal = get_state_reference(self.timesteps, self.N_VEHICLES)
+
+        self.vehicles = self.init_vehicles.copy()
         self.t = 0
 
         self.columns = int(self.timesteps / self.box_size)
-        self.action_space = spaces.Box(low=0, high=1, shape=(int((self.columns-2)*(self.columns-1)/2),))
+        self.action_space = spaces.Box(low=0, high=1, shape=(self.h, self.w))
         self.observation_space = spaces.Box(low=0, high=255, shape=(2, self.N_VEHICLES))
+        print(self.vehicles)
 
     def get_box_id(self, td, ts):
         td = int(td / self.box_size)
@@ -31,50 +38,13 @@ class EVCharging(gym.Env):
         # ID calculated with (x-2)(x-1)/2 + (y+1)
         return int(((td-2)*(td-1)/2) + (ts+1))
 
-    def gen_vehicles(self):
-        # Generate vehicles for use in this episode
-        vehicles = []
-        for i in range(self.N_VEHICLES):
-            # Gaussian for y
-            y = random.normal(loc=0.5, scale=0.125)
-            # Uniform for x
-            x = random.randint(self.timesteps)
-            vehicles.append([x, x*y])
-        # Return list of tuples [(td, ts)] for all vehicles
-        # eg. vehicles = [[100, 80], [30, 13], [20, 15], [10, 3]]
-        return vehicles
-
-    def get_needed(self):
-        needed = 0.0
-        for veh in self.vehicles:
-            needed += veh[1] / veh[0] if veh[0] != 0 else 0
-
-        return needed
-
     def get_signal(self):
-        # Arbitrary signal randomiser function
-        needed = self.get_needed()
-        if needed == 0:
-            return 0
-
-        if self.signal > needed:
-            diff = max(50.0, ((self.signal/needed)-1.2)*100)
-            downprob = 50+diff
-        else:
-            diff = max(50.0, ((needed/self.signal)-1.2)*100)
-            downprob = 50-diff
-
-        y = random.randint(100)
-        if y > downprob:
-            self.signal += 0.005*needed
-        else:
-            self.signal -= 0.005*needed
-        return self.signal
+        return self.reference_signal[self.t] + random.uniform(-0.1, 0.1)
 
     def get_histogram(self):
         histogram = np.zeros((self.timesteps // self.box_size, self.timesteps // self.box_size))
 
-        for td, ts in self.vehicles:
+        for ind, (td, ts) in self.vehicles.iterrows():
             histogram[int(td / self.box_size), int(ts / self.box_size)] += 1
 
         histogram = histogram / self.N_VEHICLES
@@ -82,42 +52,40 @@ class EVCharging(gym.Env):
         return histogram
 
 
-        # histogram = [0 for i in range(self.N_BOXES)]
-        # for td, ts in self.vehicles:
-        #     histogram[self.get_box_id(td, ts)] += 1
-        # histogram = [i // self.N_VEHICLES for i in histogram]
-        # return histogram
-
 
     def step(self, action):
+
+        def get_dts(ts, td):
+            return 0 if (ts / self.box_size) <= 0 else (
+                1 if int((ts / self.box_size) + 1) >= int(td / self.box_size) else action[int(td / self.box_size)][
+                    int(ts / self.box_size)])
+
+        def get_dtd(td):
+            return 1 if td > 0 else 0
+
         total_charge = 0
         # Update td and ts according to time and action
-        for i in range(len(self.vehicles)):
-            # Update td and ts for each vehicle
-            veh = self.vehicles[i]
-            # box_id = self.get_box_id(veh[0], veh[1]) # Get the id of the box it is in
-            dtd = 1 if veh[0] > 0 else 0
-            # If ts <= 0 then no charge. If ts in box touching y=x then 1 charge. Else action[box_id]
-            try:
-                dts = 0 if (veh[1]/self.box_size) <= 0 else (1 if int((veh[1]/self.box_size)+1) >= int(veh[0]/self.box_size) else action[int(veh[0]/self.box_size)][int(veh[1]/self.box_size)])
-            except:
-                print(veh)
-            self.vehicles[i][0] -= dtd
-            self.vehicles[i][1] -= dts
-            total_charge += dts
+        self.vehicles['dt_d'] = self.vehicles.apply(lambda x: get_dtd(x['t_d']), axis=1)
+        self.vehicles['dt_s'] = self.vehicles.apply(lambda x: get_dts(x['t_s'], x['t_d']), axis=1)
+
+        self.vehicles['t_d'] -= self.vehicles['dt_d']
+        self.vehicles['t_s'] -= self.vehicles['dt_s']
+
+        total_charge = self.vehicles['dt_s'].sum()
+
+        self.vehicles = self.vehicles.drop(['dt_d', 'dt_s'], axis=1)
 
         # observation = ([i[0] for i in self.vehicles], [i[1] for i in self.vehicles])
         observation = self.get_histogram()
         reward = - abs(self.get_signal() - total_charge)
-        done = True if all(i[0]<1 and i[1]<0 for i in self.vehicles) else False
-        info = {'needed': self.get_needed(), 'signal':self.get_signal()}
+        done = (self.vehicles['t_s'] <= 0).all()
+        info = {'signal':self.get_signal()}
+        self.t += 1
         return observation, reward, done, info
 
     def reset(self):
-        self.vehicles = self.gen_vehicles()
-        ts = [i[0] for i in self.vehicles]
-        td = [i[1] for i in self.vehicles]
-        self.signal = self.get_needed()
+        self.vehicles = self.init_vehicles.copy()
+        self.t = 0
 
         # observation = ([i[0] for i in self.vehicles], [i[1] for i in self.vehicles])
         observation = self.get_histogram()

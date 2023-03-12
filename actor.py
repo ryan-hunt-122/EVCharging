@@ -20,13 +20,14 @@ class Actor(nn.Module):
         self.bn3 = nn.BatchNorm2d(32)
         # Fully connected layer 1
         # Shape is given by Y x Y x C -> Y = [W-K+2]+1
-        self.fc1 = nn.Linear(in_features=(self.h - 2) * (self.w - 2) * 32, out_features=200)
+        self.fc1 = nn.Linear(in_features=1 + ((self.h - 2) * (self.w - 2) * 32), out_features=200)
         # Fully connected layer 2
         self.fc2 = nn.Linear(in_features=200, out_features=200)
         # Output layer
         self.out = nn.Linear(in_features=200, out_features=self.h * self.w)
 
-    def forward(self, x):
+    def forward(self, x, s):
+        # print(f'Actor shape: {x.shape}')
         # Pass input through first convolutional layer
         x = self.bn1(self.conv1(x))
         # Pass output through second convolutional layer
@@ -35,10 +36,12 @@ class Actor(nn.Module):
         x = F.relu(self.bn3(self.conv3(x)))
         # Flatten output from convolutional layers
         x = x.view(x.size(0), -1)
+        # print(f'x shape: {x.shape}, s shape: {s.shape}')
+        x = torch.cat((x, s), 1)
         # Pass output through first fully connected layer
         x = F.relu(self.fc1(x))
         # Pass output through second fully connected layer
         x = F.relu(self.fc2(x))
         # Pass output through output layer
-        x = torch.tanh(self.out(x))
+        x = torch.sigmoid(self.out(x))
         return x

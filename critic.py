@@ -28,6 +28,7 @@ class Critic(nn.Module):
         self.out = nn.Linear(in_features=200, out_features=1)
 
     def forward(self, x):
+        # print(f'Critic Shape: {x.shape}')
         # Pass input through first convolutional layer
         x = F.relu(self.bn1(self.conv1(x)))
         # Pass output through second convolutional layer
