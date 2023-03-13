@@ -39,7 +39,7 @@ class EVCharging(gym.Env):
         return int(((td-2)*(td-1)/2) + (ts+1))
 
     def get_signal(self):
-        return self.reference_signal[self.t] + random.uniform(-0.1, 0.1)
+        return self.reference_signal[self.t]
 
     def get_histogram(self):
         histogram = np.zeros((self.timesteps // self.box_size, self.timesteps // self.box_size))
@@ -89,7 +89,7 @@ class EVCharging(gym.Env):
 
         # observation = ([i[0] for i in self.vehicles], [i[1] for i in self.vehicles])
         observation = self.get_histogram()
-        return observation  # reward, done, info can't be included
+        return observation
 
     def render(self, mode='human'):
         histogram = self.get_histogram()

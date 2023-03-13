@@ -21,13 +21,13 @@ class Critic(nn.Module):
         self.bn3 = nn.BatchNorm2d(32)
         # Fully connected layer 1
         self.num_in = (self.h - 2) * (self.w - 2) * 32
-        self.fc1 = nn.Linear(in_features=self.num_in, out_features=200)
+        self.fc1 = nn.Linear(in_features=1+self.num_in, out_features=200)
         # Fully connected layer 2
         self.fc2 = nn.Linear(in_features=200, out_features=200)
         # Output layer
         self.out = nn.Linear(in_features=200, out_features=1)
 
-    def forward(self, x):
+    def forward(self, x, s):
         # print(f'Critic Shape: {x.shape}')
         # Pass input through first convolutional layer
         x = F.relu(self.bn1(self.conv1(x)))
@@ -37,6 +37,9 @@ class Critic(nn.Module):
         x = F.relu(self.bn3(self.conv3(x)))
         # Flatten output from convolutional layers
         x = x.view(-1, self.num_in)
+        # print(f'{x.shape}')
+        # print(f'{s.shape}')
+        x = torch.cat((x, s), 1)
         # Pass output through first fully connected layer
         x = F.relu(self.fc1(x))
         # Pass output through second fully connected layer

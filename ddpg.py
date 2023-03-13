@@ -31,7 +31,7 @@ class DDPG():
         self.critic = Critic(self.shape)
         # and target critic network Q' with weights q'
         self.target_critic = Critic(self.shape)
-        self.critic_optim = optim.RMSprop(self.critic.parameters())
+        self.critic_optim = optim.RMSprop(self.critic.parameters(), lr=0.0001)
 
         # Randomly initialize actor network M with weights m
         self.actor = Actor(self.shape)
@@ -70,7 +70,7 @@ class DDPG():
         v = np.reshape(v, self.shape)
         w = to_tensor(np.array([transition[3], v])).unsqueeze(0)
 
-        x = self.target_critic.forward(w).detach().numpy()[0][0]
+        x = self.target_critic.forward(w, to_tensor(np.array([transition[4]])).unsqueeze(0)).detach().numpy()[0][0]
 
         yi += self.gamma * x
 
@@ -78,7 +78,8 @@ class DDPG():
 
     def update_critic(self, minibatch, target_batch):
 
-        state_batch, action_batch, _, _ = [[i[j] for i in minibatch] for j in range(4)]
+        state_batch, action_batch, _, _, sig_batch = [[i[j] for i in minibatch] for j in range(5)]
+        sig_batch = np.array(sig_batch)
 
         self.critic.zero_grad()
 
@@ -86,7 +87,7 @@ class DDPG():
 
         x = to_tensor(np.array(a)).unsqueeze(0)
 
-        output_batch = self.critic(x[0])
+        output_batch = self.critic(x[0], to_tensor(sig_batch).unsqueeze(1))
 
         lossfn = nn.MSELoss()
 
@@ -123,7 +124,7 @@ class DDPG():
         policy_grad = -self.critic(torch.stack(
             (to_tensor(state_batch),
              self.actor(to_tensor(state_batch).unsqueeze(1), to_tensor(sig_batch).unsqueeze(1)).reshape(-1, 30, 30)), 1
-        ))
+        ), to_tensor(sig_batch).unsqueeze(1))
         # print(policy_grad)
 
         policy_grad = policy_grad.mean()

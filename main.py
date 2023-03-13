@@ -6,6 +6,7 @@ from evcharging import EVCharging
 from reference import get_state_reference
 import plotly.graph_objects as go
 from ddpg import DDPG
+import matplotlib.pyplot as plt
 
 
 
@@ -27,6 +28,7 @@ def train_ddpg():
 
     # Initialize random process for action exploration
     env = EVCharging(300, 30)
+    ep_rewards = []
     # Receive initial observation state
     for episode in range(100):
         # print(f'Episode {episode}:')
@@ -35,14 +37,16 @@ def train_ddpg():
         reward = 0
         done = 0
         # For t=1,T do
-        while not done:
-            # if env.t % 100 == 0:
-                # print(f'Episode {episode} at step {env.t} with accumulated reward {reward}')
+        # while not done:
+        for i in range(100):
+            if env.t % 50 == 0:
+                print(f'Episode {episode} at step {env.t} with accumulated reward {reward}')
             sig = env.get_signal()
             # Select action according to current policy
             a_t = algo.select_action(s_t, sig)
             a_t = a_t.detach().tolist()
             a_t = np.reshape(a_t, shape).tolist()
+            # print(a_t)
 
             # Execute action and observe reward and new state
             s_t1, r_t, done, info = env.step(a_t)
@@ -61,9 +65,15 @@ def train_ddpg():
             algo.update_target_networks()
             s_t = s_t1
         print(f'Episode {episode} finished in {env.t} steps, with episode reward {reward}')
+        ep_rewards.append(reward)
+        plt.plot(range(len(ep_rewards)), ep_rewards)
+        plt.savefig('train_loss.png')
+
 
 if __name__ == '__main__':
+    plt.style.use('dark_background')
     train_ddpg()
+
     # env = EVCharging(300, 30)
     # obs = env.reset()
     # env.render()
