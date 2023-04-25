@@ -1,12 +1,13 @@
+import os
+import pickle
+
 import numpy as np
-from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.ppo import MlpPolicy
 from stable_baselines3 import PPO
 from evcharging import EVCharging
-from reference import get_state_reference
-import plotly.graph_objects as go
-from ddpg import DDPG
+from ddpg.ddpg import DDPG
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 
 
@@ -19,28 +20,30 @@ def train():
     env.close()
     return model
 
-def train_ddpg():
-    shape = (30, 30)
+def train_ddpg(lr, mult):
+    shape = (10, 10)
 
     # Randomly initialize networks and replay buffer
     # Shape of grid is shape = (30, 30)
-    algo = DDPG(shape, minibatch_size=16)
+    algo = DDPG(shape, minibatch_size=16, lr=0.00005, mult=10.0)
 
     # Initialize random process for action exploration
-    env = EVCharging(300, 30)
+    env = EVCharging(10, 100, shape=shape)
     ep_rewards = []
+    losses = []
     # Receive initial observation state
-    for episode in range(100):
+    for episode in range(20000):
+        state_list = []
         # print(f'Episode {episode}:')
         s_1 = env.reset()
         s_t = s_1
         reward = 0
-        done = 0
+        done = False
         # For t=1,T do
-        # while not done:
-        for i in range(100):
-            if env.t % 50 == 0:
-                print(f'Episode {episode} at step {env.t} with accumulated reward {reward}')
+        while not done:
+            state_list.append((env.vehicles, env.get_signal()))
+            # if env.t % 50 == 0:
+            #     print(f'Episode {episode} at step {env.t} with accumulated reward {reward}')
             sig = env.get_signal()
             # Select action according to current policy
             a_t = algo.select_action(s_t, sig)
@@ -59,20 +62,34 @@ def train_ddpg():
             # Set yi for all i
             ys = [[algo.yi(tr)] for tr in minibatch]
             # Update critic by minimizing loss
-            algo.update_critic(minibatch, ys)
+            loss = algo.update_critic(minibatch, ys)
+            # losses.append(loss.item())
+            # fig1 = plt.figure()
+            # plt.plot(range(len(losses)), losses)
+            # fig1.savefig('train_loss.png')
+            # plt.close()
             algo.update_actor(minibatch)
 
             algo.update_target_networks()
             s_t = s_t1
         print(f'Episode {episode} finished in {env.t} steps, with episode reward {reward}')
         ep_rewards.append(reward)
+        fig = plt.figure()
         plt.plot(range(len(ep_rewards)), ep_rewards)
-        plt.savefig('train_loss.png')
+        fig.savefig(f'results/rewards_{lr}_{mult}.png')
+        plt.close()
+
+        with open(f'pickles/{lr}_{mult}/ep{episode}.pkl', 'wb') as fp:
+            pickle.dump(state_list, fp)
 
 
 if __name__ == '__main__':
     plt.style.use('dark_background')
-    train_ddpg()
+    # lrs = [0.000001, 0.000005, 0.00001, 0.0001]
+    # mults = [1.0, 5.0, 10.0, 20.0]
+    # for lr in lrs:
+    #     for mult in mults:
+    train_ddpg(0.0001, 10.0)
 
     # env = EVCharging(300, 30)
     # obs = env.reset()

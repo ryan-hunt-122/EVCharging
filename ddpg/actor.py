@@ -25,6 +25,8 @@ class Actor(nn.Module):
         self.fc2 = nn.Linear(in_features=200, out_features=200)
         # Output layer
         self.out = nn.Linear(in_features=200, out_features=self.h * self.w)
+        nn.init.uniform_(self.out.weight.data, -0.0003, 0.0003)
+        nn.init.uniform_(self.out.bias.data, -0.0003, 0.0003)
 
     def forward(self, x, s):
         # print(f'Actor shape: {x.shape}')

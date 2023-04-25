@@ -1,7 +1,7 @@
 import numpy as np
 
-from critic import Critic
-from actor import Actor
+from .critic import Critic
+from .actor import Actor
 
 import random
 import torch.optim as optim
@@ -21,23 +21,23 @@ def to_tensor(ndarray, volatile=False, requires_grad=False, dtype=FLOAT):
 
 class DDPG():
 
-    def __init__(self, shape, max_buffer=100, minibatch_size=16, gamma=0.01):
+    def __init__(self, shape, max_buffer=1000, minibatch_size=32, gamma=0.99, lr=0.000001, mult=5.0):
         self.shape = shape
         self.max_buffer = max_buffer
         self.minibatch_size = minibatch_size
         self.gamma = gamma
-        self.tau = 0.5
+        self.tau = 0.001
         # Randomly initialize critic network Q with weights q
         self.critic = Critic(self.shape)
         # and target critic network Q' with weights q'
         self.target_critic = Critic(self.shape)
-        self.critic_optim = optim.RMSprop(self.critic.parameters(), lr=0.0001)
+        self.critic_optim = optim.RMSprop(self.critic.parameters(), lr=lr*mult)
 
         # Randomly initialize actor network M with weights m
         self.actor = Actor(self.shape)
         # and target actor network M' with weights m'
         self.target_actor = Actor(self.shape)
-        self.actor_optim = optim.RMSprop(self.actor.parameters(), lr=0.0001)
+        self.actor_optim = optim.RMSprop(self.actor.parameters(), lr=lr)
 
         # Initialize replay buffer R
         self.replay_buffer = []
@@ -97,6 +97,7 @@ class DDPG():
         loss.backward()
         # print(loss)
         self.critic_optim.step()
+        return loss
 
     def update_actor(self, minibatch):
         state_batch, _, _, _, sig_batch = [[i[j] for i in minibatch] for j in range(5)]
@@ -123,7 +124,7 @@ class DDPG():
         # print(f'2nd shape: {self.actor(to_tensor(state_batch).unsqueeze(1), to_tensor(sig_batch).unsqueeze(1)).reshape(-1, 30, 30)}')
         policy_grad = -self.critic(torch.stack(
             (to_tensor(state_batch),
-             self.actor(to_tensor(state_batch).unsqueeze(1), to_tensor(sig_batch).unsqueeze(1)).reshape(-1, 30, 30)), 1
+             self.actor(to_tensor(state_batch).unsqueeze(1), to_tensor(sig_batch).unsqueeze(1)).reshape(-1, 10, 10)), 1
         ), to_tensor(sig_batch).unsqueeze(1))
         # print(policy_grad)
 

@@ -9,7 +9,7 @@ import random
 class EVCharging(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, timesteps, n_vehicles, shape=(30, 30)):
+    def __init__(self, timesteps, n_vehicles, shape=(10, 10)):
         super(EVCharging, self).__init__()
         # Define action and observation space
         # They must be gym.spaces objects
@@ -17,7 +17,7 @@ class EVCharging(gym.Env):
         self.timesteps = timesteps
         self.N_VEHICLES = n_vehicles
 
-        self.box_size = (300 // self.h)
+        self.box_size = (self.timesteps // self.h)
 
         self.N_BOXES = int(((self.timesteps / self.box_size) ** 2) / 2 + (self.timesteps / self.box_size) / 2)
 
@@ -78,7 +78,7 @@ class EVCharging(gym.Env):
         # observation = ([i[0] for i in self.vehicles], [i[1] for i in self.vehicles])
         observation = self.get_histogram()
         reward = - abs(self.get_signal() - total_charge)
-        done = (self.vehicles['t_s'] <= 0).all()
+        done = (self.vehicles['t_s'] <= 0).all() or (self.t >= 5)
         info = {'signal':self.get_signal()}
         self.t += 1
         return observation, reward, done, info
