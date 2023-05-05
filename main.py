@@ -25,7 +25,7 @@ def train_ddpg(lr, mult):
 
     # Randomly initialize networks and replay buffer
     # Shape of grid is shape = (30, 30)
-    algo = DDPG(shape, minibatch_size=16, lr=0.00005, mult=10.0)
+    algo = DDPG(shape, minibatch_size=16, lr=0.0005, mult=10.0)
 
     # Initialize random process for action exploration
     env = EVCharging(10, 100, shape=shape)
@@ -47,9 +47,6 @@ def train_ddpg(lr, mult):
             sig = env.get_signal()
             # Select action according to current policy
             a_t = algo.select_action(s_t, sig)
-            a_t = a_t.detach().tolist()
-            a_t = np.reshape(a_t, shape).tolist()
-            # print(a_t)
 
             # Execute action and observe reward and new state
             s_t1, r_t, done, info = env.step(a_t)
@@ -72,6 +69,7 @@ def train_ddpg(lr, mult):
 
             algo.update_target_networks()
             s_t = s_t1
+            # print(loss)
         print(f'Episode {episode} finished in {env.t} steps, with episode reward {reward}')
         ep_rewards.append(reward)
         fig = plt.figure()

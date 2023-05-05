@@ -1,3 +1,5 @@
+import math
+
 import gym
 from gym import spaces
 import numpy as np
@@ -31,6 +33,8 @@ class EVCharging(gym.Env):
         self.observation_space = spaces.Box(low=0, high=255, shape=(2, self.N_VEHICLES))
         print(self.vehicles)
 
+        self.action_descriptors = [(i, j) for j in range(0, 10) for i in range(0, j + 1)]
+
     def get_box_id(self, td, ts):
         td = int(td / self.box_size)
         ts = int(ts / self.box_size)
@@ -53,7 +57,18 @@ class EVCharging(gym.Env):
 
 
 
-    def step(self, action):
+    def step(self, act):
+
+        zeros = [[0] * self.h] * self.h
+        for i in range(0, self.h):
+            for j in range(0, self.h):
+                if j > i:
+                    pass
+                else:
+                    zeros[i][j] = act[0]
+                    act = act[1:]
+        assert (len(act) == 0)
+        action = zeros
 
         def get_dts(ts, td):
             return 0 if (ts / self.box_size) <= 0 else (
@@ -77,8 +92,8 @@ class EVCharging(gym.Env):
 
         # observation = ([i[0] for i in self.vehicles], [i[1] for i in self.vehicles])
         observation = self.get_histogram()
-        reward = - abs(self.get_signal() - total_charge)
-        done = (self.vehicles['t_s'] <= 0).all() or (self.t >= 5)
+        reward = - math.pow(self.get_signal() - total_charge, 2)
+        done = (self.vehicles['t_s'] <= 0).all() or (self.t >= 2)
         info = {'signal':self.get_signal()}
         self.t += 1
         return observation, reward, done, info

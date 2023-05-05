@@ -21,12 +21,12 @@ def to_tensor(ndarray, volatile=False, requires_grad=False, dtype=FLOAT):
 
 class DDPG():
 
-    def __init__(self, shape, max_buffer=1000, minibatch_size=32, gamma=0.99, lr=0.000001, mult=5.0):
+    def __init__(self, shape, max_buffer=100, minibatch_size=16, gamma=0.99, lr=0.0001, mult=5.0):
         self.shape = shape
         self.max_buffer = max_buffer
         self.minibatch_size = minibatch_size
         self.gamma = gamma
-        self.tau = 0.001
+        self.tau = 0.01
         # Randomly initialize critic network Q with weights q
         self.critic = Critic(self.shape)
         # and target critic network Q' with weights q'
@@ -42,11 +42,21 @@ class DDPG():
         # Initialize replay buffer R
         self.replay_buffer = []
 
+        # Set of action descriptors
+        self.action_descriptors = [(i, j) for j in range(0, 10) for i in range(0, j+1)]
+
+
     def select_action(self, state, sig):
         # Select action according to current actor policy (and exploration noise?)
         # tens = torch.tensor([state])
         # self.target_actor.forward(tens.type(torch.DoubleTensor))
-        return self.actor.forward(to_tensor(np.array([state])).unsqueeze(0), to_tensor(np.array([sig])).unsqueeze(0))
+        u = []
+        for loc in self.action_descriptors:
+            a = self.actor.forward(to_tensor(np.array([state])).unsqueeze(0), to_tensor(np.array([sig])).unsqueeze(0),
+                               to_tensor(np.array([loc[0]])).unsqueeze(0), to_tensor(np.array([loc[1]])).unsqueeze(0))
+            a = a.detach().tolist()[0][0]
+            u.append(a)
+        return u
 
     def store_transition(self, transition):
         a, b, c, d, e = transition
@@ -65,14 +75,23 @@ class DDPG():
     def yi(self, transition):
         yi = transition[2]
         u = to_tensor(np.array([transition[3]])).unsqueeze(0)
-        v = self.target_actor.forward(u, to_tensor(np.array([transition[4]])).unsqueeze(0))
-        v = v.detach().numpy()
-        v = np.reshape(v, self.shape)
-        w = to_tensor(np.array([transition[3], v])).unsqueeze(0)
+        v = []
+        tensors = []
+        for loc in self.action_descriptors:
+            a = self.target_actor.forward(u, to_tensor(np.array([transition[4]])).unsqueeze(0),
+                               to_tensor(np.array([loc[0]])).unsqueeze(0), to_tensor(np.array([loc[1]])).unsqueeze(0))
+            tensors.append(a)
+            # a = a.detach().tolist()[0][0]
+            # v.append(a)
 
-        x = self.target_critic.forward(w, to_tensor(np.array([transition[4]])).unsqueeze(0)).detach().numpy()[0][0]
+        v = torch.cat(tensors, 1)
 
-        yi += self.gamma * x
+        # v = to_tensor(np.array(v)).unsqueeze(0)
+        w = to_tensor(np.array([transition[3]])).unsqueeze(0)
+
+        x = self.target_critic.forward(w, to_tensor(np.array([transition[4]])).unsqueeze(0), v).detach().numpy()[0][0]
+
+        yi -= self.gamma * x
 
         return yi
 
@@ -83,11 +102,14 @@ class DDPG():
 
         self.critic.zero_grad()
 
-        a = list(zip(state_batch, action_batch))
+        # a = list(zip(state_batch, action_batch))
 
-        x = to_tensor(np.array(a)).unsqueeze(0)
+        # x = to_tensor(np.array(a)).unsqueeze(0)
 
-        output_batch = self.critic(x[0], to_tensor(sig_batch).unsqueeze(1))
+        x = to_tensor(np.array(state_batch)).unsqueeze(1)
+        y = to_tensor(np.array(action_batch))
+
+        output_batch = self.critic(x, to_tensor(sig_batch).unsqueeze(1), y)
 
         lossfn = nn.MSELoss()
 
@@ -95,7 +117,8 @@ class DDPG():
 
         loss = lossfn(output_batch, target_batch)
         loss.backward()
-        # print(loss)
+
+        # print(self.critic.conv1.weight.grad)
         self.critic_optim.step()
         return loss
 
@@ -122,10 +145,27 @@ class DDPG():
 
         # print(f'1st shape: {to_tensor(state_batch).shape}')
         # print(f'2nd shape: {self.actor(to_tensor(state_batch).unsqueeze(1), to_tensor(sig_batch).unsqueeze(1)).reshape(-1, 30, 30)}')
-        policy_grad = -self.critic(torch.stack(
-            (to_tensor(state_batch),
-             self.actor(to_tensor(state_batch).unsqueeze(1), to_tensor(sig_batch).unsqueeze(1)).reshape(-1, 10, 10)), 1
-        ), to_tensor(sig_batch).unsqueeze(1))
+
+        batch_len = len(state_batch)
+        tensors = []
+        for i, loc in enumerate(self.action_descriptors):
+            a = self.actor(to_tensor(state_batch).unsqueeze(1), to_tensor(sig_batch).unsqueeze(1),
+                                          to_tensor(np.array([loc[0]]*batch_len)).unsqueeze(1),
+                                          to_tensor(np.array([loc[1]]*batch_len)).unsqueeze(1))
+            tensors.append(a)
+            # print(a.tolist())
+
+            # for ind, elem in enumerate(a.tolist()):
+            #     v[ind][i] = elem[0]
+            # print(a.detach().tolist())
+            # a = a.detach().tolist()[0][0]
+            # v.append(a)
+        # print(v)
+        # print(sig_batch)
+        # print(torch.from_numpy(v).shape)
+        v = torch.cat(tensors, 1)
+
+        policy_grad = -self.critic(to_tensor(state_batch).unsqueeze(1), to_tensor(sig_batch).unsqueeze(1), v)
         # print(policy_grad)
 
         policy_grad = policy_grad.mean()
